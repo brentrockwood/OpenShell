@@ -82,6 +82,7 @@ impl ProviderRegistry {
         registry.register(providers::openai::OpenaiProvider);
         registry.register(providers::anthropic::AnthropicProvider);
         registry.register(providers::nvidia::NvidiaProvider);
+        registry.register(providers::ollama::OllamaProvider);
         registry.register(providers::gitlab::GitlabProvider);
         registry.register(providers::github::GithubProvider);
         registry.register(providers::outlook::OutlookProvider);
@@ -133,6 +134,7 @@ pub fn normalize_provider_type(input: &str) -> Option<&'static str> {
         "openai" => Some("openai"),
         "anthropic" => Some("anthropic"),
         "nvidia" => Some("nvidia"),
+        "ollama" => Some("ollama"),
         "gitlab" | "glab" => Some("gitlab"),
         "github" | "gh" => Some("github"),
         "outlook" => Some("outlook"),
@@ -152,7 +154,7 @@ pub fn detect_provider_from_command(command: &[String]) -> Option<&'static str> 
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_provider_from_command, normalize_provider_type};
+    use super::{ProviderRegistry, detect_provider_from_command, normalize_provider_type};
 
     #[test]
     fn normalizes_known_provider_aliases() {
@@ -164,7 +166,14 @@ mod tests {
         assert_eq!(normalize_provider_type("openai"), Some("openai"));
         assert_eq!(normalize_provider_type("anthropic"), Some("anthropic"));
         assert_eq!(normalize_provider_type("nvidia"), Some("nvidia"));
+        assert_eq!(normalize_provider_type("ollama"), Some("ollama"));
         assert_eq!(normalize_provider_type("unknown"), None);
+    }
+
+    #[test]
+    fn registry_includes_ollama() {
+        let registry = ProviderRegistry::new();
+        assert!(registry.known_types().contains(&"ollama"));
     }
 
     #[test]
