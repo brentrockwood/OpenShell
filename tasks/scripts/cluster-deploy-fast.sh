@@ -149,13 +149,13 @@ matches_gateway() {
     Cargo.toml|Cargo.lock|proto/*|deploy/docker/cross-build.sh)
       return 0
       ;;
-    crates/openshell-core/*|crates/openshell-providers/*)
+    deploy/docker/Dockerfile.images|tasks/scripts/docker-build-image.sh)
       return 0
       ;;
-    crates/openshell-router/*)
+    crates/openshell-core/*|crates/openshell-policy/*|crates/openshell-providers/*)
       return 0
       ;;
-    crates/openshell-server/*|deploy/docker/Dockerfile.gateway)
+    crates/openshell-router/*|crates/openshell-server/*)
       return 0
       ;;
     *)
@@ -168,6 +168,9 @@ matches_supervisor() {
   local path=$1
   case "${path}" in
     Cargo.toml|Cargo.lock|proto/*|deploy/docker/cross-build.sh)
+      return 0
+      ;;
+    deploy/docker/Dockerfile.images|tasks/scripts/docker-build-image.sh)
       return 0
       ;;
     crates/openshell-core/*|crates/openshell-policy/*|crates/openshell-router/*)
@@ -206,10 +209,10 @@ compute_fingerprint() {
   local committed_trees=""
   case "${component}" in
     gateway)
-      committed_trees=$(git ls-tree HEAD Cargo.toml Cargo.lock proto/ deploy/docker/cross-build.sh crates/openshell-core/ crates/openshell-providers/ crates/openshell-router/ crates/openshell-server/ deploy/docker/Dockerfile.gateway 2>/dev/null || true)
+      committed_trees=$(git ls-tree HEAD Cargo.toml Cargo.lock proto/ deploy/docker/cross-build.sh deploy/docker/Dockerfile.images tasks/scripts/docker-build-image.sh crates/openshell-core/ crates/openshell-policy/ crates/openshell-providers/ crates/openshell-router/ crates/openshell-server/ 2>/dev/null || true)
       ;;
     supervisor)
-      committed_trees=$(git ls-tree HEAD Cargo.toml Cargo.lock proto/ deploy/docker/cross-build.sh crates/openshell-core/ crates/openshell-policy/ crates/openshell-router/ crates/openshell-sandbox/ 2>/dev/null || true)
+      committed_trees=$(git ls-tree HEAD Cargo.toml Cargo.lock proto/ deploy/docker/cross-build.sh deploy/docker/Dockerfile.images tasks/scripts/docker-build-image.sh crates/openshell-core/ crates/openshell-policy/ crates/openshell-router/ crates/openshell-sandbox/ 2>/dev/null || true)
       ;;
     helm)
       committed_trees=$(git ls-tree HEAD deploy/helm/openshell/ 2>/dev/null || true)
@@ -299,7 +302,7 @@ build_start=$(date +%s)
 declare -a built_components=()
 
 if [[ "${build_gateway}" == "1" ]]; then
-  tasks/scripts/docker-build-component.sh gateway
+  tasks/scripts/docker-build-image.sh gateway
 fi
 
 # Build the supervisor binary and docker cp it into the running k3s cluster.
@@ -315,36 +318,43 @@ if [[ "${build_supervisor}" == "1" ]]; then
   _cluster_image=$(docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}" 2>/dev/null)
   CLUSTER_ARCH=$(docker image inspect --format '{{.Architecture}}' "${_cluster_image}" 2>/dev/null || echo "amd64")
 
-  # Build the supervisor binary using docker buildx with a lightweight build.
-  # We use the same cross-build.sh helpers as the full cluster image but only
-  # compile openshell-sandbox, then extract the binary via --output.
+  # Detect the host (build) architecture in Docker's naming convention.
+  HOST_ARCH=$(docker info --format '{{.Architecture}}' 2>/dev/null || echo "amd64")
+  # Normalize: Docker reports "aarch64" on ARM hosts but uses "arm64" elsewhere.
+  case "${HOST_ARCH}" in
+    aarch64) HOST_ARCH=arm64 ;;
+    x86_64)  HOST_ARCH=amd64 ;;
+  esac
+
+  # Build the supervisor binary from the shared image build graph, then
+  # extract it via --output so fast deploys reuse the same Rust cache.
   SUPERVISOR_BUILD_DIR=$(mktemp -d)
   trap 'rm -rf "${SUPERVISOR_BUILD_DIR}"' EXIT
 
   # Compute cargo version from git tags for the supervisor binary.
-  SUPERVISOR_VERSION_ARGS=()
-  if [[ -n "${OPENSHELL_CARGO_VERSION:-}" ]]; then
-    SUPERVISOR_VERSION_ARGS=(--build-arg "OPENSHELL_CARGO_VERSION=${OPENSHELL_CARGO_VERSION}")
-  else
+  _cargo_version=${OPENSHELL_CARGO_VERSION:-}
+  if [[ -z "${_cargo_version}" ]]; then
     _cargo_version=$(uv run python tasks/scripts/release.py get-version --cargo 2>/dev/null || true)
-    if [[ -n "${_cargo_version}" ]]; then
-      SUPERVISOR_VERSION_ARGS=(--build-arg "OPENSHELL_CARGO_VERSION=${_cargo_version}")
-    fi
   fi
 
-  docker buildx build \
-    --file deploy/docker/Dockerfile.cluster \
-    --target supervisor-builder \
-    --build-arg "BUILDARCH=$(docker version --format '{{.Server.Arch}}')" \
-    --build-arg "TARGETARCH=${CLUSTER_ARCH}" \
-    ${SUPERVISOR_VERSION_ARGS[@]+"${SUPERVISOR_VERSION_ARGS[@]}"} \
-    --output "type=local,dest=${SUPERVISOR_BUILD_DIR}" \
-    --platform "linux/${CLUSTER_ARCH}" \
-    .
+  # Only set DOCKER_PLATFORM when actually cross-compiling.  Omitting it
+  # for native builds lets docker-build-image.sh pick the fast "docker"
+  # driver (same as gateway), which shares BuildKit cache mounts (sccache,
+  # cargo registry/target) and avoids docker-container IPC overhead.
+  _platform_env=()
+  if [[ "${CLUSTER_ARCH}" != "${HOST_ARCH}" ]]; then
+    _platform_env=(DOCKER_PLATFORM="linux/${CLUSTER_ARCH}")
+  fi
+
+  env \
+  "${_platform_env[@]+"${_platform_env[@]}"}" \
+  DOCKER_OUTPUT="type=local,dest=${SUPERVISOR_BUILD_DIR}" \
+  OPENSHELL_CARGO_VERSION="${_cargo_version}" \
+    tasks/scripts/docker-build-image.sh supervisor-output
 
   # Copy the built binary into the running k3s container
   docker exec "${CONTAINER_NAME}" mkdir -p /opt/openshell/bin
-  docker cp "${SUPERVISOR_BUILD_DIR}/build/out/openshell-sandbox" \
+  docker cp "${SUPERVISOR_BUILD_DIR}/openshell-sandbox" \
     "${CONTAINER_NAME}:/opt/openshell/bin/openshell-sandbox"
   docker exec "${CONTAINER_NAME}" chmod 755 /opt/openshell/bin/openshell-sandbox
 
