@@ -60,7 +60,8 @@ mod tests {
 
     #[test]
     fn returns_some_with_ollama_base_url() {
-        let ctx = MockDiscoveryContext::new().with_env("OLLAMA_BASE_URL", "http://ollama.example:11434");
+        let ctx =
+            MockDiscoveryContext::new().with_env("OLLAMA_BASE_URL", "http://ollama.example:11434");
         let discovered = OllamaProvider::discover_with_context(&ctx)
             .expect("discovery should not error")
             .expect("should discover provider");
