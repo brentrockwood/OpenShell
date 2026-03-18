@@ -1039,12 +1039,12 @@ mod tests {
             "OPENAI_API_KEY",
             "ollama",
             "OLLAMA_BASE_URL",
-            "http://ai1.lab:11434/v1",
+            "http://ollama.example:11434/v1",
         );
         let resolved =
             resolve_provider_route(&provider).unwrap_or_else(|e| panic!("should resolve: {e}"));
         assert_eq!(resolved.provider_type, "ollama");
-        assert_eq!(resolved.route.endpoint, "http://ai1.lab:11434/v1");
+        assert_eq!(resolved.route.endpoint, "http://ollama.example:11434/v1");
         assert_eq!(resolved.route.api_key, "ollama");
         assert!(
             !resolved
