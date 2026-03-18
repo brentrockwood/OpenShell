@@ -86,6 +86,28 @@ static NVIDIA_PROFILE: InferenceProviderProfile = InferenceProviderProfile {
     default_headers: &[],
 };
 
+// Ollama supports the OpenAI-compatible chat, completions, and model discovery
+// endpoints. It does NOT implement the OpenAI Responses API (/v1/responses).
+const OLLAMA_PROTOCOLS: &[&str] = &[
+    "openai_chat_completions",
+    "openai_completions",
+    "model_discovery",
+];
+
+static OLLAMA_PROFILE: InferenceProviderProfile = InferenceProviderProfile {
+    provider_type: "ollama",
+    default_base_url: "http://localhost:11434/v1",
+    protocols: OLLAMA_PROTOCOLS,
+    // Ollama does not require authentication. The blueprint stores a dummy
+    // "ollama" credential under OPENAI_API_KEY via credential_default so that
+    // find_provider_api_key can locate it through the credential fallback loop.
+    credential_key_names: &[],
+    base_url_config_keys: &["OLLAMA_BASE_URL", "OPENAI_BASE_URL"],
+    // Ollama accepts Bearer tokens but ignores them.
+    auth: AuthHeader::Bearer,
+    default_headers: &[],
+};
+
 /// Look up the inference provider profile for a given provider type.
 ///
 /// Returns `None` for provider types that don't support inference routing
@@ -95,6 +117,7 @@ pub fn profile_for(provider_type: &str) -> Option<&'static InferenceProviderProf
         "openai" => Some(&OPENAI_PROFILE),
         "anthropic" => Some(&ANTHROPIC_PROFILE),
         "nvidia" => Some(&NVIDIA_PROFILE),
+        "ollama" => Some(&OLLAMA_PROFILE),
         _ => None,
     }
 }
@@ -184,6 +207,29 @@ mod tests {
         assert!(profile_for("github").is_none());
         assert!(profile_for("gitlab").is_none());
         assert!(profile_for("unknown").is_none());
+    }
+
+    #[test]
+    fn profile_for_ollama_returns_some() {
+        let profile = profile_for("ollama").expect("ollama profile must exist");
+        assert_eq!(profile.provider_type, "ollama");
+        assert_eq!(profile.default_base_url, "http://localhost:11434/v1");
+        assert_eq!(profile.auth, AuthHeader::Bearer);
+    }
+
+    #[test]
+    fn profile_for_ollama_case_insensitive() {
+        assert!(profile_for("Ollama").is_some());
+        assert!(profile_for("OLLAMA").is_some());
+    }
+
+    #[test]
+    fn ollama_protocols_excludes_openai_responses() {
+        let profile = profile_for("ollama").expect("ollama profile must exist");
+        assert!(!profile.protocols.contains(&"openai_responses"));
+        assert!(profile.protocols.contains(&"openai_chat_completions"));
+        assert!(profile.protocols.contains(&"openai_completions"));
+        assert!(profile.protocols.contains(&"model_discovery"));
     }
 
     #[test]

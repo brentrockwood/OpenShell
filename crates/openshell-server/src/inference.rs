@@ -237,7 +237,7 @@ fn resolve_provider_route(provider: &Provider) -> Result<ResolvedProviderRoute, 
     let profile = openshell_core::inference::profile_for(&provider_type).ok_or_else(|| {
         Status::invalid_argument(format!(
             "provider '{name}' has unsupported type '{provider_type}' for cluster inference \
-                 (supported: openai, anthropic, nvidia)",
+                 (supported: openai, anthropic, nvidia, ollama)",
             name = provider.name
         ))
     })?;
@@ -1026,5 +1026,62 @@ mod tests {
     fn effective_route_name_rejects_unknown_name() {
         let err = effective_route_name("unknown-route").unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn resolve_provider_route_succeeds_for_ollama_with_dummy_credential() {
+        // Simulate a provider as the blueprint would create it:
+        // credential_default "ollama" stored under OPENAI_API_KEY,
+        // endpoint URL in OLLAMA_BASE_URL config.
+        let provider = make_provider_with_base_url(
+            "ollama-local",
+            "ollama",
+            "OPENAI_API_KEY",
+            "ollama",
+            "OLLAMA_BASE_URL",
+            "http://ai1.lab:11434/v1",
+        );
+        let resolved =
+            resolve_provider_route(&provider).unwrap_or_else(|e| panic!("should resolve: {e}"));
+        assert_eq!(resolved.provider_type, "ollama");
+        assert_eq!(resolved.route.endpoint, "http://ai1.lab:11434/v1");
+        assert_eq!(resolved.route.api_key, "ollama");
+        assert!(
+            !resolved
+                .route
+                .protocols
+                .contains(&"openai_responses".to_string())
+        );
+        assert!(
+            resolved
+                .route
+                .protocols
+                .contains(&"openai_chat_completions".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_provider_route_ollama_falls_back_to_default_base_url() {
+        // No OLLAMA_BASE_URL in config: should use the profile default.
+        let provider = make_provider("ollama-local", "ollama", "OPENAI_API_KEY", "ollama");
+        let resolved =
+            resolve_provider_route(&provider).unwrap_or_else(|e| panic!("should resolve: {e}"));
+        assert_eq!(resolved.route.endpoint, "http://localhost:11434/v1");
+    }
+
+    #[test]
+    fn resolve_provider_route_rejects_ollama_with_no_credential() {
+        // Provider with no credentials at all should be rejected.
+        let provider = Provider {
+            id: "provider-no-cred".to_string(),
+            name: "ollama-no-cred".to_string(),
+            r#type: "ollama".to_string(),
+            credentials: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
+        };
+        match resolve_provider_route(&provider) {
+            Err(e) => assert_eq!(e.code(), tonic::Code::InvalidArgument),
+            Ok(_) => panic!("expected InvalidArgument error for provider with no credentials"),
+        }
     }
 }
