@@ -118,6 +118,19 @@ Policies are declarative YAML files. Static sections (filesystem, process) are l
 
 Agents need credentials — API keys, tokens, service accounts. OpenShell manages these as **providers**: named credential bundles that are injected into sandboxes at creation. The CLI auto-discovers credentials for recognized agents (Claude, Codex, OpenCode, Copilot) from your shell environment, or you can create providers explicitly with `openshell provider create`. Credentials never leak into the sandbox filesystem; they are injected as environment variables at runtime.
 
+Supported provider types: `openai`, `anthropic`, `nvidia`, `ollama`.
+
+To route inference through a local or remote [Ollama](https://ollama.com/) instance (no API key required):
+
+```bash
+# Point at a local Ollama server and set the inference route
+openshell provider create --name ollama-local --type ollama \
+  --config OLLAMA_BASE_URL=http://localhost:11434/v1
+openshell inference set --provider ollama-local --model llama3.1:8b
+```
+
+For a remote Ollama endpoint, replace `http://localhost:11434/v1` with your server URL. The sandbox egress policy must allow outbound connections to that host on port 11434 -- use the `ollama` policy preset or the `ollama_service` blueprint addition (see [NemoClaw](https://github.com/brentrockwood/NemoClaw)).
+
 ## GPU Support (Experimental)
 
 > **Experimental** — GPU passthrough works on supported hosts but is under active development. Expect rough edges and breaking changes.
@@ -141,7 +154,7 @@ The CLI auto-bootstraps a GPU-enabled gateway on first use, auto-selecting CDI w
 | [Codex](https://developers.openai.com/codex)                  | [`base`](https://github.com/NVIDIA/OpenShell-Community/tree/main/sandboxes/base) | Works out of the box. Provider uses `OPENAI_API_KEY`.                         |
 | [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) | [`base`](https://github.com/NVIDIA/OpenShell-Community/tree/main/sandboxes/base) | Works out of the box. Provider uses `GITHUB_TOKEN` or `COPILOT_GITHUB_TOKEN`. |
 | [OpenClaw](https://openclaw.ai/)                              | [Community](https://github.com/NVIDIA/OpenShell-Community)                       | Launch with `openshell sandbox create --from openclaw`.                       |
-| [Ollama](https://ollama.com/)                                 | [Community](https://github.com/NVIDIA/OpenShell-Community)                       | Launch with `openshell sandbox create --from ollama`.                         |
+| [Ollama](https://ollama.com/)                              | Built-in provider (`--type ollama`)                                              | Local or remote inference. No API key required. See Providers section.      |
 
 ## Key Commands
 
