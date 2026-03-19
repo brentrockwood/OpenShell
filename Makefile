@@ -41,7 +41,13 @@ REGISTRY_CONTAINER   ?= openshell-local-registry
 REGISTRY_LOCAL   = $(REGISTRY_LOCAL_HOST):$(REGISTRY_PORT)
 REGISTRY_DOCKER  = $(REGISTRY_DOCKER_HOST):$(REGISTRY_PORT)
 
-# Image names
+# Image names.
+# REGISTRY_IMAGE and DOCKER_IMAGE refer to the same physical image in the same
+# registry server, just from two different network viewpoints:
+#   REGISTRY_IMAGE  -- used by `docker push` on the host (127.0.0.1:5000)
+#   DOCKER_IMAGE    -- used by k3s inside the cluster container (host.docker.internal:5000)
+# Pushing to REGISTRY_IMAGE makes the image pullable as DOCKER_IMAGE because
+# both hostnames resolve to the same registry server; the image path is identical.
 IMAGE_TAG        ?= dev
 GATEWAY_IMAGE    = openshell/gateway:$(IMAGE_TAG)
 REGISTRY_IMAGE   = $(REGISTRY_LOCAL)/openshell/gateway:$(IMAGE_TAG)
@@ -189,18 +195,18 @@ start-gateway:
 
 wait-healthy:
 	@echo "=== Waiting for gateway to become healthy..."
-	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
 	  status=$$(openshell status 2>&1); \
 	  if echo "$$status" | grep -q "Connected"; then \
 	    echo "    Gateway is healthy (attempt $$i)."; \
 	    exit 0; \
 	  fi; \
-	  if [ "$$i" -eq 15 ]; then \
-	    echo "Error: gateway failed to become healthy after 30s."; \
+	  if [ "$$i" -eq 30 ]; then \
+	    echo "Error: gateway failed to become healthy after 60s."; \
 	    echo "Run: openshell gateway info"; \
 	    exit 1; \
 	  fi; \
-	  echo "    Waiting... (attempt $$i/15)"; \
+	  echo "    Waiting... (attempt $$i/30)"; \
 	  sleep 2; \
 	done
 
