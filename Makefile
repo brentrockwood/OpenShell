@@ -16,10 +16,10 @@ SHELL := /bin/bash
 # Configuration (override via environment or make flags)
 # ---------------------------------------------------------------------------
 
-# Cluster name matches the basename of the working directory, lowercased.
-# Override with: make CLUSTER_NAME=my-cluster deploy
-CLUSTER_NAME ?= $(shell basename "$(CURDIR)" | tr '[:upper:]' '[:lower:]' | \
-                  sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g;s/^-//;s/-$$//')
+# Auto-detect the running cluster container. Looks for any openshell-cluster-*
+# container. Override with: make CLUSTER_NAME=my-cluster deploy
+_AUTO_CLUSTER   := $(shell docker ps --format '{{.Names}}' 2>/dev/null | grep '^openshell-cluster-' | head -1 | sed 's/^openshell-cluster-//')
+CLUSTER_NAME    ?= $(_AUTO_CLUSTER)
 
 CONTAINER_NAME  = openshell-cluster-$(CLUSTER_NAME)
 IMAGE_TAG       ?= dev
