@@ -75,8 +75,8 @@ NEMOCLAW         ?= nemoclaw
 # ---------------------------------------------------------------------------
 
 .PHONY: help clean build build-cli install-cli build-gateway \
-        deploy ensure-registry push-image start-gateway wait-healthy \
-        hot-swap onboard
+        deploy ensure-registry push-image onboard \
+        start-gateway wait-healthy hot-swap
 
 # ---------------------------------------------------------------------------
 # help
@@ -148,14 +148,17 @@ build-gateway:
 #
 # Full fresh deploy sequence:
 #   1. Start (or verify) local Docker registry
-#   2. Push local gateway image to the registry
-#   3. Destroy any existing gateway cluster
-#   4. Start a fresh cluster pointed at the local registry (skips GHCR pull)
-#   5. Wait for the gateway to report healthy
-#   6. Run nemoclaw onboard
+#   2. Tag and push the local gateway image
+#   3. Run nemoclaw onboard with OPENSHELL_PUSH_IMAGES set — its internal
+#      `openshell gateway start` inherits these env vars and loads the local
+#      image directly into the cluster's containerd, bypassing GHCR.
+#
+# Note: we do NOT call start-gateway here. nemoclaw onboard manages the full
+# gateway lifecycle (destroy + start + configure). Running start-gateway first
+# would bind port 8080 and cause onboard's preflight check to fail.
 # ---------------------------------------------------------------------------
 
-deploy: ensure-registry push-image start-gateway wait-healthy onboard
+deploy: ensure-registry push-image onboard
 	@echo ""
 	@echo "=== Deploy complete. Run 'openshell status' to verify."
 
@@ -217,6 +220,11 @@ onboard:
 	@echo "    Endpoint:  ollama"
 	@echo "    URL:       $(OLLAMA_URL)"
 	@echo "    Model:     $(OLLAMA_MODEL)"
+	@echo "    Registry:  $(REGISTRY_DOCKER) (local image via OPENSHELL_PUSH_IMAGES)"
+	OPENSHELL_PUSH_IMAGES="$(DOCKER_IMAGE)" \
+	OPENSHELL_REGISTRY_HOST="$(REGISTRY_DOCKER)" \
+	OPENSHELL_REGISTRY_INSECURE=true \
+	IMAGE_TAG="$(IMAGE_TAG)" \
 	"$(NEMOCLAW)" onboard \
 	  --non-interactive \
 	  --endpoint ollama \
