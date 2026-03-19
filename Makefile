@@ -174,12 +174,14 @@ ensure-registry:
 	fi
 
 push-image:
-	@echo "=== Pushing gateway image to local registry..."
+	@echo "=== Preparing gateway image..."
 	@docker image inspect "$(GATEWAY_IMAGE)" >/dev/null 2>&1 || \
 	  { echo "Error: image '$(GATEWAY_IMAGE)' not found. Run 'make build' first."; exit 1; }
 	docker tag "$(GATEWAY_IMAGE)" "$(REGISTRY_IMAGE)"
 	docker push "$(REGISTRY_IMAGE)"
 	@echo "    Pushed: $(REGISTRY_IMAGE)"
+	docker tag "$(GATEWAY_IMAGE)" "$(DOCKER_IMAGE)"
+	@echo "    Tagged: $(DOCKER_IMAGE) (for bootstrap export into cluster containerd)"
 
 start-gateway:
 	@echo "=== Destroying any existing gateway cluster..."
