@@ -699,6 +699,14 @@ async fn sandbox_create_keeps_sandbox_with_forwarding() {
     let tls = test_tls(&server);
     install_fake_ssh(&fake_ssh_dir);
 
+    // Bind to port 0 to let the OS assign a free port, then release it before
+    // passing the port number to ForwardSpec so the test is not sensitive to
+    // whatever else may be listening on a hardcoded port.
+    let free_port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+
     run::sandbox_create(
         &server.endpoint,
         Some("persistent-forward"),
@@ -712,7 +720,7 @@ async fn sandbox_create_keeps_sandbox_with_forwarding() {
         None,
         &[],
         None,
-        Some(openshell_core::forward::ForwardSpec::new(8080)),
+        Some(openshell_core::forward::ForwardSpec::new(free_port)),
         &["echo".to_string(), "OK".to_string()],
         Some(false),
         Some(false),
